@@ -1,0 +1,84 @@
+import pytest
+
+from structural_mcp.core.errors import AdapterError
+from structural_mcp.core.server import Service
+from structural_mcp.sapfir.adapter import SapfirAdapter
+from structural_mcp.sapfir.ifc import decode_string, split_args
+
+IFC = """ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCBUILDINGSTOREY('g1',#9,'\\X2\\042D0442043004360031\\X0\\',$,$,#8,$,$,.ELEMENT.,3.3);
+#2=IFCBUILDINGSTOREY('g0',#9,'Level, ''A''',$,$,#8,$,$,.ELEMENT.,0.);
+#10=IFCCOLUMN('c1',#9,'K1',$,$,#8,#7,'T-1');
+#11=IFCCOLUMN('c2',#9,'K2',$,$,#8,#7,'T-2');
+#12=IFCBEAM('b1',#9,'B1',$,$,#8,#7,'T-3');
+#13=IFCSLAB('s1',#9,'P1',$,$,#8,#7,'T-4',.FLOOR.);
+#14=IFCWALLSTANDARDCASE('w1',#9,'W1',$,$,#8,#7,'T-5');
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('r1',#9,$,$,(#10,#11,
+ #12),#2);
+#21=IFCRELCONTAINEDINSPATIALSTRUCTURE('r2',#9,$,$,(#13),#1);
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+
+@pytest.fixture
+def sapfir(settings):
+    adapter = SapfirAdapter(settings)
+    (settings.model_dirs[0] / "m.ifc").write_text(IFC, encoding="utf-8")
+    return Service(adapter, settings)
+
+
+def test_step_helpers():
+    assert decode_string("\\X2\\042D0442043004360031\\X0\\") == "Этаж1"
+    assert split_args("'a, ''b''',$,(#1,#2),3.5") == ["'a, ''b'''", "$", "(#1,#2)", "3.5"]
+
+
+def test_ifc_summary(sapfir, settings):
+    out = sapfir.adapter.load_ifc_export(str(settings.model_dirs[0] / "m.ifc"))
+    assert out["ifc_schema"] == "IFC2X3"
+    assert [(s["name"], s["elevation"]) for s in out["storeys"]] == [("Level, 'A'", 0.0), ("Этаж1", 3.3)]
+    assert out["storeys"][0]["elements"] == {"column": 2, "beam": 1}
+    assert out["element_totals"] == {"column": 2, "beam": 1, "slab": 1, "wall": 1}
+    assert "1 element(s) are not assigned" in out["diagnostics"][0]  # the wall
+    cols = sapfir.list_elements("column", 0, 10, None)
+    assert [c["tag"] for c in cols["items"]] == ["T-1", "T-2"] and cols["items"][0]["storey"] == "Level, 'A'"
+
+
+def test_ifc_required_and_sandboxed(sapfir, tmp_path):
+    with pytest.raises(AdapterError, match="No IFC export"):
+        sapfir.list_elements("column", 0, 10, None)
+    (tmp_path / "x.ifc").write_text(IFC)
+    with pytest.raises(AdapterError, match="not_allowed"):
+        sapfir.adapter.load_ifc_export(str(tmp_path / "x.ifc"))
+
+
+class _Storey:
+    def GetName(self):
+        return "1"
+
+    def NewModel(self, kind):  # must never be reachable
+        raise AssertionError("model was modified")
+
+
+class _Doc:
+    def GetActiveStorey(self):
+        return _Storey()
+
+
+class _App:
+    def GetActiveDoc(self):
+        return _Doc()
+
+
+def test_only_getters_can_be_called(sapfir):
+    sapfir.adapter._app = _App()
+    assert sapfir.adapter.read_property(["GetActiveDoc", "GetActiveStorey", "GetName"])["value"] == "1"
+    for bad in (["GetActiveDoc", "GetActiveStorey", "NewModel"], ["DrawModel"], ["__class__"], ["Get Active"]):
+        with pytest.raises(AdapterError, match="not_allowed"):
+            sapfir.adapter.read_property(bad)
+    info = sapfir.get_model_info()
+    assert info["com"]["active_storey"] == "present"

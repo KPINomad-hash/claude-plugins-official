@@ -1,0 +1,6 @@
+{
+  "name": "structural-analysis-mcp",
+  "description": "Four local MCP servers for structural analysis programs on a Windows workstation: LIRA-SAPR (LIRA-FEM), SAPFIR (LIRA-CAD), STAAD.Pro and SAP2000. Read models and results with units, axes and revision; analysis only on working copies.",
+  "version": "0.1.0",
+  "keywords": ["mcp", "structural-engineering", "lira-sapr", "sapfir", "staad", "sap2000", "windows"]
+}

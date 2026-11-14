@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "sap2000": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "sap2000-mcp"]
+    },
+    "staad": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "--with", "git+https://github.com/BentleySystems/openstaadpy.git", "staad-mcp"]
+    },
+    "lira": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "lira-mcp"]
+    },
+    "sapfir": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "sapfir-mcp"]
+    }
+  }
+}
