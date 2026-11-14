@@ -3,8 +3,9 @@
 API facts follow the type libraries of LIRA-SAPR 2024 R2 as documented and
 exercised by the open-source EvgenVer/lira-sapr-mcp project:
 
-* VISOR: ProgID `LiraSapr.Application[.<year>]` (2024) or
-  `LiraSapphire.Application[.<year>]` (2025+); documents, input tables
+* VISOR: ProgID `LiraSapr.Application[.<year>]` (2024),
+  `LiraSapphire.Application[.<year>]` (2025) or `LiraFem.Application` (2026, the
+  name used in LIRALAND's official API help); documents, input tables
   (`doc.AllTables.CreateNewItem` -> `ILiraTable.GetContents`), analysis start
   with completion reported through COM events.
 * Results: in-process `LiraResAPI.dll`, coclass `LiraResultsAccess` (no ProgID),
@@ -242,8 +243,12 @@ class LiraAdapter(Adapter):
     # ---- connection -------------------------------------------------------------
     def _progids(self) -> list[str]:
         configured = os.environ.get("STRUCT_MCP_LIRA_PROGID")
-        found = sorted(winreg_probe.find_progids(PROGID_PREFIXES),
-                       key=lambda p: (_progid_year(p), p.lower().startswith("lirasapphire")), reverse=True)
+        def rank(progid: str) -> tuple[int, int]:  # product families are chronological
+            low = progid.lower()
+            return (2 if low.startswith("lirafem") else 1 if low.startswith("lirasapphire") else 0,
+                    _progid_year(progid))
+
+        found = sorted(winreg_probe.find_progids(PROGID_PREFIXES), key=rank, reverse=True)
         return list(dict.fromkeys(([configured] if configured else []) + found))
 
     def probe(self) -> dict[str, Any]:
@@ -287,7 +292,7 @@ class LiraAdapter(Adapter):
         progids = self._progids()
         if not progids:
             raise AdapterError(errors.NOT_CONNECTED, "No LIRA application ProgID is registered on this machine.",
-                               "Expected LiraSapr.Application or LiraSapphire.Application. Run LIRA once as "
+                               "Expected LiraFem.Application, LiraSapphire.Application or LiraSapr.Application. Run LIRA once as "
                                "administrator to register it, or set STRUCT_MCP_LIRA_PROGID.")
         progid = progids[0]
         running = self._server_running(progid)

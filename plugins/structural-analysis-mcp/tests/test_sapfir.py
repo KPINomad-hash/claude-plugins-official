@@ -56,7 +56,24 @@ def test_ifc_required_and_sandboxed(sapfir, tmp_path):
         sapfir.adapter.load_ifc_export(str(tmp_path / "x.ifc"))
 
 
+class _Model:
+    def __init__(self, code, ident):
+        self.TypeModel, self.ID = code, ident
+
+    def Parameter(self, name):
+        if name == "M_THICKNESS" and self.TypeModel == 10:
+            return 0.25
+        raise RuntimeError("no such parameter")
+
+
 class _Storey:
+    ID = 100
+    CountModel = 4
+    models = [_Model(10, 1), _Model(12, 2), _Model(12, 3), _Model(77, 4)]
+
+    def GetModelByIndex(self, i):
+        return self.models[i]
+
     def GetName(self):
         return "1"
 
@@ -65,6 +82,11 @@ class _Storey:
 
 
 class _Doc:
+    CountStorey = 1
+
+    def GetStoreyByIndex(self, i):
+        return _Storey()
+
     def GetActiveStorey(self):
         return _Storey()
 
@@ -82,3 +104,14 @@ def test_only_getters_can_be_called(sapfir):
             sapfir.adapter.read_property(bad)
     info = sapfir.get_model_info()
     assert info["com"]["active_storey"] == "present"
+
+
+def test_model_structure_over_com(sapfir):
+    sapfir.adapter._app = _App()
+    out = sapfir.adapter.get_model_structure(include_objects=True, parameters=["M_THICKNESS"])
+    assert out["storey_count"] == 1 and out["totals_by_type"] == {"wall": 1, "column": 2, "type_77": 1}
+    objects = out["storeys"][0]["objects"]
+    assert objects[0]["M_THICKNESS"] == 0.25 and objects[1]["M_THICKNESS"].startswith("unavailable")
+    assert sapfir.adapter.read_property(["GetActiveDoc", "CountStorey"])["value"] == 1
+    with pytest.raises(AdapterError, match="not a parameter mnemonic"):
+        sapfir.adapter.get_model_structure(parameters=["M_X = 1"])

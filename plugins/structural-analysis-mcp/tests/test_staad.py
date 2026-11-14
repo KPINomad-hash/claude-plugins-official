@@ -121,7 +121,7 @@ def test_api_error_rows_are_not_zeros(staad):
 
 def test_modal_and_no_results(staad):
     res = staad.get_results("modal", [], None, {}, 0, 10)
-    assert res["rows"][0]["period_s"] == 0.5
+    assert res["rows"][0]["period_s"] == 0.5 and res["rows"][0]["participation_x_percent"] == 80.0
     staad.adapter._staad.Output.available = False
     try:
         with pytest.raises(AdapterError, match="no_results"):

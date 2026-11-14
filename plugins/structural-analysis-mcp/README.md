@@ -7,7 +7,7 @@
 | `sap2000-mcp` | SAP2000 | CSI OAPI, локальный COM (`comtypes`) | `sap2000_` |
 | `staad-mcp` | STAAD.Pro 2025+ | OpenSTAAD через `openstaadpy` | `staad_` |
 | `lira-mcp` | ЛИРА-САПР / LIRA-FEM 2024+ | COM ВИЗОР + `LiraResAPI.dll` (`pywin32`) | `lira_` |
-| `sapfir-mcp` | САПФИР-3D / LIRA-CAD | COM (обзорно) + файловый маршрут IFC | `sapfir_` |
+| `sapfir-mcp` | САПФИР-3D / LIRA-CAD | COM (этажи и объекты) + файловый маршрут IFC | `sapfir_` |
 
 Серверы работают по stdio на той же машине, где установлены программа и лицензия.
 По умолчанию доступ только на чтение. Изменение моделей не реализовано.
@@ -16,7 +16,7 @@
 
 Код написан по опубликованным описаниям API и исходникам сторонних проектов
 (`openstaadpy`, `openstaad-mcp`, `lira-sapr-mcp`, `sap2000-mcp`, учебное пособие САПФИР, гл. 10).
-**На установленных программах он не запускался.** Автотесты (`pytest`, 35 шт.) проверяют
+**На установленных программах он не запускался.** Автотесты (`pytest`, 36 шт.) проверяют
 общий слой и разбор ответов API на имитациях, а не сами программы. Перед работой с проектными
 моделями пройдите приёмку из раздела «Приёмка на рабочей станции».
 
@@ -64,7 +64,7 @@ Claude Code: `claude mcp add --transport stdio sap2000 -- uv run --project C:\pa
 | `<p>_run_analysis`, `<p>_get_job_status` | Расчёт рабочей копии фоновым заданием (если разрешён) |
 
 Дополнительно: `staad_list_instances`; `lira_read_table` (любая таблица ввода), `lira_get_analysis_protocol`;
-`sapfir_describe_api`, `sapfir_read_property`, `sapfir_load_ifc_export`, `sapfir_get_analytical_model_info`.
+`sapfir_get_model_structure`, `sapfir_describe_api`, `sapfir_read_property`, `sapfir_load_ifc_export`, `sapfir_get_analytical_model_info`.
 
 Виды результатов:
 
@@ -83,20 +83,26 @@ Claude Code: `claude mcp add --transport stdio sap2000 -- uv run --project C:\pa
 меняет выбор загружений для вывода (`Results.Setup`) — на модель это не влияет.
 
 **STAAD.Pro.** Нужен STAAD.Pro 2025 (25.0.1)+ с открытой моделью; сервер программу не запускает.
-Усилия по длине стержня не выдаются: в исходниках не определено, абсолютное расстояние или доля длины
-принимает `GetIntermediateMemberForcesAtDistance`. Доля модальных масс выдаётся как есть (проценты или доли — проверить).
+Усилия по длине стержня не выдаются: источники расходятся, что принимает
+`GetIntermediateMemberForcesAtDistance` — справочник OpenSTAAD описывает долю длины 0…1, примеры на форумах передают
+расстояние. Модальные массы — в процентах (так подписаны в примере Bentley «Retrieve Dynamic Output»).
 
-**ЛИРА.** ProgID — `LiraSapr.Application` (2024) / `LiraSapphire.Application` (2025+); проверено автором
-исходного проекта только на 2024 R2.3. Чтение таблицы создаёт и удаляет временную таблицу в документе, поэтому
+**ЛИРА.** ProgID — `LiraSapr.Application` (2024), `LiraSapphire.Application` (2025), `LiraFem.Application`
+(2026, так в официальной справке LIRALAND); сервер берёт самый новый из зарегистрированных. Работа с API проверена
+автором исходного проекта только на 2024 R2.3. Чтение таблицы создаёт и удаляет временную таблицу в документе, поэтому
 ЛИРА ставит флаг «изменён». Результаты ЛИРА хранит по ИМЕНИ модели в рабочем каталоге: расчёт рабочей копии
 заменяет результаты одноимённой исходной модели. Запроса опорных реакций в API нет. Коэффициенты РСН API не
 отдаёт — читайте таблицу `DCL`. Событие «расчёт завершён» приходит и при проблемах — смотрите протокол.
 
-**САПФИР.** Внешний COM-API документирован минимально (ProgID `Sapfir.Application.7.0`, `GetActiveDoc`,
-`GetActiveStorey`). Сервер не читает этажи и элементы через COM: он показывает реальный состав API установленной
-версии (`sapfir_describe_api`) и вызывает только геттеры без аргументов. Структура модели (этажи, отметки, число
-колонн/балок/плит/стен по этажам) берётся из IFC-экспорта. Состояние аналитической модели и передача в ВИЗОР
-через сервер не выполняются — после передачи сверяйте с `lira_get_model_info`.
+**САПФИР.** ProgID — `Sapfir.Application` (текущая версия) или `Sapfir.Application.<N>.0`. По «Описанию функций
+автоматизации САПФИР» и форуму LIRALAND `sapfir_get_model_structure` перебирает этажи (`CountStorey`,
+`GetStoreyByIndex`) и объекты (`CountModel`, `GetModelByIndex`, `TypeModel`, `ID`) и по запросу читает параметры
+по мнемоникам (`Parameter("M_THICKNESS")`). Коды типов: этаж 4, стена 10, плита 11, колонна 12, балка 13; остальные
+выдаются как `type_<код>`. Имена и отметки этажей через COM не читаются (свойства не найдены в источниках) — они
+есть в IFC-экспорте. `sapfir_describe_api` показывает реальный состав API установленной версии. Полное описание
+лежит в папке `Manual` программы («Описание функций автоматизации САПФИР.pdf», «Схема объектов автоматизации
+САПФИР.pdf») — `sapfir_get_capabilities` ищет эти файлы. Метод экспорта аналитической модели в ЛИРА через COM в
+источниках не найден: передача в ВИЗОР выполняется в интерфейсе, после неё сверяйте с `lira_get_model_info`.
 
 ## Приёмка на рабочей станции
 
@@ -108,6 +114,20 @@ Claude Code: `claude mcp add --transport stdio sap2000 -- uv run --project C:\pa
 4. Два загружения и линейная комбинация — сверить значения и состав.
 5. Малая модель с модальным расчётом — периоды и модальные массы.
 6. Отказы: программа закрыта, нет результатов, открыт модальный диалог, два запроса одновременно.
+
+## Источники по API
+
+- LIRA-FEM API и RES API: <https://help.liraland.com/en-gb/extensions/lira-fem-api.html>,
+  <https://help.liraland.com/en-gb/extensions/lira-fem-res-api.html>,
+  <https://help.liraland.com/en-gb/extensions/lira-fem-extensions.html>;
+  зеркало для ЛИРА-САПФИР: <https://rflira.ru/kb/89/2669/>
+- Сторонний сервер ЛИРА (типы, приёмы работы): <https://github.com/EvgenVer/lira-sapr-mcp>
+- САПФИР: <https://rflira.ru/kb/99/554/>, <https://rflira.ru/files/kb/sapfir/SAPFIR_automation_functions.pdf>,
+  форум <https://www.liraland.ua/forum/forum16/topic2010/messages/>
+- STAAD.Pro: <https://github.com/BentleySystems/openstaadpy>, <https://github.com/BentleySystems/openstaad-mcp>,
+  пример динамических результатов
+  <https://docs.bentley.com/LiveContent/web/STAAD.Pro%20Help-v20/en/GUID-07692CF5-A7ED-4338-A1AD-638A31BC6572.html>
+- SAP2000: `CSI_OAPI_Documentation.chm` в папке установки; <https://github.com/fcocarrascob/Skills_SAP>
 
 ## Разработка
 

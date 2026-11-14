@@ -1,14 +1,19 @@
 """SAPFIR-3D / LIRA-CAD adapter.
 
-What is documented for external automation (tutorial 2017 ch. 10, unchanged in
-2022) is small: ProgID `Sapfir.Application.7.0`, `Application.GetActiveDoc()`,
-`Document.GetActiveStorey()` and a few model-creation calls; the full object
-model lives in SAPFIR.tlb on the workstation. So this adapter offers:
+Sources for the automation (COM) API: the tutorial (2017 ch. 10, unchanged in
+2022), the vendor's "Описание функций автоматизации САПФИР" (shipped in the
+program's Manual folder) and the LIRALAND forum thread "Программирование в
+Сапфир". From them: ProgID `Sapfir.Application` (version-independent; `.7.0`
+etc. for a specific release), attachable with GetActiveObject;
+`Application.GetActiveDoc()`; project `CountStorey` / `GetStoreyByIndex(i)`;
+storey `CountModel` / `GetModelByIndex(i)`; every object has `TypeModel`, `ID`
+and `Parameter(name)` with mnemonic names (e.g. M_THICKNESS). None of this was
+run against an installation, so the adapter offers:
 
-* COM route — attach, report what is registered, list the members the type
-  library exposes (`describe_api`) and call parameterless getters
-  (`read_property`) so the real API can be established on the installed build
-  without changing the model;
+* COM route — attach; `get_model_structure` walks storeys and objects with the
+  calls above (read-only); `describe_api` lists what the installed type library
+  really exposes and `read_property` calls parameterless getters, so the calls
+  can be checked on the installed build without changing the model;
 * file route — read an IFC export of the model (storeys, elements per storey)
   for `get_analytical_model_info` and for hand-over checks against VISOR.
 
@@ -29,8 +34,12 @@ from ..core.errors import AdapterError
 from .ifc import read_ifc
 
 DOCUMENTED_PROGID = "Sapfir.Application.7.0"
+GENERIC_PROGID = "Sapfir.Application"  # current installed version
+# TM_* constants from const_model.jsh / SpTypeModel.h as quoted in the vendor documentation
+TYPE_MODEL = {4: "storey", 10: "wall", 11: "slab", 12: "column", 13: "beam"}
+MAX_OBJECTS = 5000
 PROGID_PREFIXES = ("sapfir.", "liracad.", "lira-cad.")
-_GETTER = re.compile(r"^(Get|Is|Has|Count)\w*$")
+_GETTER = re.compile(r"^((Get|Is|Has|Count)\w*|TypeModel|ID)$")
 _SCALARS = (str, int, float, bool, type(None))
 
 
@@ -59,7 +68,7 @@ class SapfirAdapter(Adapter):
     def _progids(self) -> list[str]:
         configured = os.environ.get("STRUCT_MCP_SAPFIR_PROGID")
         found = [p for p in winreg_probe.find_progids(PROGID_PREFIXES) if "application" in p.lower()]
-        ordered = ([configured] if configured else []) + sorted(found, reverse=True) + [DOCUMENTED_PROGID]
+        ordered = ([configured] if configured else []) + [GENERIC_PROGID] + sorted(found, reverse=True) + [DOCUMENTED_PROGID]
         return list(dict.fromkeys(ordered))
 
     def probe(self) -> dict[str, Any]:
@@ -75,8 +84,13 @@ class SapfirAdapter(Adapter):
             if not base:
                 continue
             for pattern in ("Sapfir/*/Service/const_model.jsh", "Documents/SAPFIR/*/SDK Plugin",
+                            "Documents/SAPFIR/*/SDK Plugin/**/SpTypeModel.h",
                             "LIRA SAPR/*/SDK*", "Documents/LIRA SAPR/*/SDK*"):
                 hints += [str(p) for p in Path(base).glob(pattern)]
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if base:  # "Описание функций автоматизации САПФИР.pdf", "Схема объектов автоматизации САПФИР.pdf"
+                hints += [str(p) for p in Path(base).glob("SAPFIR/*/Manual/*автоматизации*.pdf")]
+                hints += [str(p) for p in Path(base).glob("LIRA*/*/Manual/*автоматизации*.pdf")]
         info["sdk_and_script_folders_found"] = hints
         try:
             import win32com.client  # type: ignore  # noqa: F401
@@ -139,7 +153,8 @@ class SapfirAdapter(Adapter):
         for step in path:
             if not _GETTER.match(step):
                 raise AdapterError(errors.NOT_ALLOWED, f"'{step}' is not a getter.",
-                                   "Only parameterless members named Get*/Is*/Has*/Count* may be called; "
+                                   "Only parameterless members named Get*/Is*/Has*/Count*, TypeModel or ID "
+                                   "may be read; "
                                    "this server does not create or edit SAPFIR objects.")
             try:
                 value = getattr(obj, step)
@@ -171,6 +186,65 @@ class SapfirAdapter(Adapter):
         if isinstance(value, (list, tuple)) and all(isinstance(v, _SCALARS) for v in value):
             return {"path": path, "kind": "list", "value": list(value)[:1000]}
         return {"path": path, "kind": "object", "members": [m["name"] for m in winreg_probe.com_members(value)]}
+
+    # ---- COM model structure (read-only) ----------------------------------------
+    @staticmethod
+    def _value(obj: Any, name: str) -> Any:
+        """Read a member that is a property in the type library but may surface as a method."""
+        value = getattr(obj, name)
+        return value() if callable(value) else value
+
+    def get_model_structure(self, include_objects: bool = False,
+                            parameters: list[str] | None = None) -> dict[str, Any]:
+        doc = self._walk(["GetActiveDoc"])
+        try:
+            storey_count = int(self._value(doc, "CountStorey"))
+        except Exception as exc:  # noqa: BLE001
+            raise AdapterError(errors.API_ERROR, f"The active document does not answer CountStorey: {exc}.",
+                               "The documented calls may differ on this build; inspect it with "
+                               "sapfir_describe_api path=['GetActiveDoc'].") from None
+        for name in parameters or []:
+            if not re.fullmatch(r"[A-Za-z0-9_]+", name):
+                raise AdapterError(errors.INVALID_INPUT, f"'{name}' is not a parameter mnemonic.",
+                                   "Mnemonics look like M_THICKNESS; SAPFIR shows them in the properties "
+                                   "window when the mnemonics option is on.")
+        storeys: list[dict[str, Any]] = []
+        totals: dict[str, int] = {}
+        listed = 0
+        diagnostics: list[str] = []
+        for si in range(storey_count):  # the forum example treats GetStoreyByIndex(0) as the first storey
+            storey = doc.GetStoreyByIndex(si)
+            if storey is None:
+                diagnostics.append(f"GetStoreyByIndex({si}) returned nothing.")
+                continue
+            count = int(self._value(storey, "CountModel"))
+            entry: dict[str, Any] = {"index": si, "id": self._value(storey, "ID"), "object_count": count,
+                                     "objects_by_type": {}}
+            if include_objects:
+                entry["objects"] = []
+            for mi in range(count):
+                model = storey.GetModelByIndex(mi)
+                code = int(self._value(model, "TypeModel"))
+                kind = TYPE_MODEL.get(code, f"type_{code}")
+                entry["objects_by_type"][kind] = entry["objects_by_type"].get(kind, 0) + 1
+                totals[kind] = totals.get(kind, 0) + 1
+                if include_objects and listed < MAX_OBJECTS:
+                    item: dict[str, Any] = {"index": mi, "id": self._value(model, "ID"), "type": kind,
+                                            "type_code": code}
+                    for name in parameters or []:
+                        try:
+                            item[name] = model.Parameter(name)
+                        except Exception as exc:  # noqa: BLE001 - parameter absent for this object type
+                            item[name] = f"unavailable: {exc}"
+                    entry["objects"].append(item)
+                    listed += 1
+            storeys.append(entry)
+        if include_objects and listed >= MAX_OBJECTS:
+            diagnostics.append(f"Object listing stopped at {MAX_OBJECTS} objects; counts are complete.")
+        return {"source": "COM (automation objects)", "storey_count": storey_count, "storeys": storeys,
+                "totals_by_type": totals, "type_codes": {v: k for k, v in TYPE_MODEL.items()},
+                "units": "SAPFIR parameters are in metres unless the mnemonic says otherwise",
+                "diagnostics": diagnostics}
 
     # ---- file route -------------------------------------------------------------
     def load_ifc_export(self, ifc_path: str) -> dict[str, Any]:
@@ -240,6 +314,12 @@ class SapfirAdapter(Adapter):
 
     def extra_tools(self) -> dict[str, Any]:
         return {
+            "get_model_structure": (self.get_model_structure,
+                                    "Storeys of the active SAPFIR document and the objects in each, counted "
+                                    "by type (wall, slab, column, beam; other types as type_<code>), read "
+                                    "through COM without changing the model. include_objects=true lists "
+                                    "every object (id, type); parameters=['M_THICKNESS', ...] also reads "
+                                    "those mnemonic parameters per object.", None),
             "describe_api": (self.describe_api,
                              "List the methods/properties the installed SAPFIR exposes on the Application "
                              "object or on an object reached through getters, e.g. path=['GetActiveDoc'] or "

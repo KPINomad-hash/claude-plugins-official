@@ -56,7 +56,7 @@ class StaadAdapter(Adapter):
         "support_reactions": "FX,FY,FZ,MX,MY,MZ at supported nodes (global axes)",
         "member_end_forces": "FX,FY,FZ,MX,MY,MZ at both member ends; options.axes = 'local' (default) "
                              "or 'global'",
-        "modal": "per extracted mode: frequency, period and mass participation in X,Y,Z",
+        "modal": "per extracted mode: frequency, period and mass participation in X,Y,Z (percent)",
     }
 
     def __init__(self) -> None:
@@ -256,13 +256,13 @@ class StaadAdapter(Adapter):
                     freq = out.GetModeFrequency(mode)
                     px, py, pz = out.GetModalMassParticipationFactors(mode)
                     rows.append(row(mode=mode, frequency_hz=freq, period_s=(1.0 / freq) if freq else None,
-                                    participation_x=px, participation_y=py, participation_z=pz))
+                                    participation_x_percent=px, participation_y_percent=py, participation_z_percent=pz))
                 except Exception as exc:  # noqa: BLE001
                     rows.append(row("error", mode=mode, message=str(exc)))
             if not modes:
                 diagnostics.append("No modes extracted (no modal analysis in this model).")
-            diagnostics.append("Mass participation is given as STAAD reports it; check on a known model "
-                               "whether it is percent or fraction.")
+            diagnostics.append("Mass participation is in percent of total mass per global direction "
+                               "(as labelled in Bentley's OpenSTAAD dynamic-output sample).")
             return ResultSet(rows, units, "global X-Y-Z", diagnostics)
 
         if not load_cases:
