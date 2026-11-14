@@ -18,6 +18,7 @@ class _Consts:
     kLiraModelPart_All, kLiraModelPart_FromArray = 0, 3
     kLiraRequest_MainData, kLiraRequest_LoadCaseDisplacement, kLiraRequest_LoadCaseForces = 10, 1, 2
     kLiraRequest_PeriodsOfVibrations, kLiraRequest_LoadCombinationDisplacements = 8, 6
+    kLiraRequest_FragmLoadForces = 3
     __dicts__ = [{f"kLiraTable_{n}": i for i, n in enumerate(["AllTables", "Group", *TABLES, "Cnt"])}]
 
     def __getattr__(self, name):
@@ -124,6 +125,13 @@ class _Resp:
     def GetBarMy(self, el, cs, lc, pos, hist):
         self.bar_calls.append((el, cs, lc, pos, hist))
         return -3.0 if cs == 1 else 0.0
+    Forces = _Longs([1, 2, 3])
+    def GetNodeRZ(self, node, lc, shape):
+        if node != 1:
+            raise RuntimeError("no data")
+        return 1.0
+    def GetNodeRX(self, node, lc, shape): return 0.0
+    def GetNodeRY(self, node, lc, shape): return 0.0
     def GetPeriods(self, lc): return _Longs([0.5, 0.1])
     def GetFrequenciesHz(self, lc): return _Longs([2.0, 10.0])
     def GetModalMasses(self, lc): return _Longs([80.0, 10.0])
@@ -234,3 +242,13 @@ def test_open_refuses_names_that_block_lira(lira, settings):
     bad.write_bytes(b"x")
     with pytest.raises(AdapterError, match="blocking dialog"):
         lira.open_working_copy(str(bad))
+
+
+def test_fragment_loads_and_renamed_table_constant(lira):
+    res = lira.get_results("fragment_loads", ["2"], None, {}, 0, 10)
+    assert res["rows"][0] == {"status": "ok", "node": "1", "load_case": "2", "shape": 1, "RX": 0.0, "RY": 0.0,
+                              "RZ": 1.0}
+    assert res["rows"][1]["status"] == "no_result"  # node outside the fragment: not a zero
+    kinds = lira.adapter.table_kinds  # LIRA-FEM 2026 names the elements table differently, same id
+    kinds["Elements_TypeAndNumbersOfNodes"] = kinds.pop("Elements_TypeAndNodes")
+    assert lira.list_elements("element", 0, 10, None)["items"][0]["nodes"] == ["1", "2"]

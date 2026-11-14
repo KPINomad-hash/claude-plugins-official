@@ -17,8 +17,9 @@ Things worth knowing when reading the output:
   it again; LIRA then flags the document as modified although nothing changed;
 * results are keyed by model name only — a same-named model analysed from
   another folder replaces them. The adapter compares node counts as a check;
-* the API has no support-reaction request; reactions of elastic supports are
-  in `element_forces` of the special elements (KE 51/56).
+* support reactions are read as "loads on fragment" (`fragment_loads`), which
+  LIRA computes for the fragment defined before the analysis; reactions of
+  elastic supports are also in `element_forces` of special elements (KE 51/56).
 """
 
 from __future__ import annotations
@@ -61,6 +62,11 @@ FORCES = {
     46: "N", 47: "My", 48: "Mx", 49: "Qz", 50: "Mz", 51: "Qy", 52: "N", 53: "Qz", 54: "Qy",
 }
 DISPLACEMENTS = ("X", "Y", "Z", "UX", "UY", "UZ")
+FRAGMENT_FORCES = {1: "RX", 2: "RY", 3: "RZ", 4: "RUX", 5: "RUY", 6: "RUZ", 7: "RBW"}  # LiraFragmLoadForceEnum
+# Table constants were renamed between releases (2024 "Elements_TypeAndNodes" is
+# "Elements_TypeAndNumbersOfNodes" in the 2026 help); the numeric ids did not change.
+TABLE_IDS = {"Nodes_Coordinates": 2, "Elements_TypeAndNodes": 3, "Nodes_Restraints": 4, "Stiffnesses": 9,
+             "Elements_Stiffnesses": 10, "LoadCases": 25}
 FINISH_CODES = {0: "finished", 1: "failed", 2: "stopped"}
 
 
@@ -230,6 +236,9 @@ class LiraAdapter(Adapter):
         "combination_forces": "element forces for RSN combinations; options.limit_state 1..4 "
                               "(1 ultimate full, 2 ultimate long-term, 3 serviceability full, "
                               "4 serviceability long-term), options.table",
+        "fragment_loads": "loads on fragment at nodes (RX,RY,RZ,RUX,RUY,RUZ) for load cases - LIRA's "
+                          "'нагрузки на фрагмент', the documented way to obtain support reactions; available "
+                          "only for nodes of the fragment the analysis computed them for",
         "modal": "per dynamic load case and mode: period, frequency, modal mass % and accumulated %",
     }
 
@@ -389,7 +398,10 @@ class LiraAdapter(Adapter):
         return path if path.lower().endswith(".lir") else None  # an unsaved document has no .lir path
 
     def read_table_rows(self, table: str, numbers: list[int] | None = None) -> list[list[Any]]:
-        if table not in self.table_kinds:
+        kind = self.table_kinds.get(table)
+        if kind is None and TABLE_IDS.get(table) in self.table_kinds.values():
+            kind = TABLE_IDS[table]  # same table under another constant name in this release
+        if kind is None:
             raise AdapterError(errors.UNSUPPORTED, f"Input table '{table}' is not available in this LIRA.",
                                f"Available: {', '.join(sorted(self.table_kinds))}.")
         doc, c = self._doc(), self._c
@@ -397,7 +409,7 @@ class LiraAdapter(Adapter):
                       else (c.kLiraModelPart_All, None))
         tables = doc.AllTables
         try:
-            item = tables.CreateNewItem(self.table_kinds[table], pars, part,
+            item = tables.CreateNewItem(kind, pars, part,
                                         f"{SCRATCH}{os.getpid()}-{uuid.uuid4().hex[:8]}", -1)
             try:
                 data = self._com.cast(item, "ILiraTable").GetContents([])
@@ -560,6 +572,13 @@ class LiraAdapter(Adapter):
 
     def _force_rows(self, resp: Any, element: int, cases: list[tuple[int, int, Any]], extra_args: tuple,
                     label: str) -> list[dict[str, Any]]:
+        try:
+            return self._force_rows_unchecked(resp, element, cases, extra_args, label)
+        except Exception as exc:  # noqa: BLE001 - LIRA raises for data it does not have (e.g. unknown element)
+            return [row("no_result", element=str(element), message=str(exc))]
+
+    def _force_rows_unchecked(self, resp: Any, element: int, cases: list[tuple[int, int, Any]],
+                              extra_args: tuple, label: str) -> list[dict[str, Any]]:
         family = int(resp.GetFamily(element))
         prefix = FAMILY_PREFIX.get(family)
         codes = parse_numbers(resp.GetForces(element).AddToString())
@@ -628,10 +647,35 @@ class LiraAdapter(Adapter):
                     for case in cases:
                         wanted = [int(options["shape"])] if "shape" in options else shapes.get(case, ([1], False))[0]
                         for shape in wanted:
-                            vals = {d: float(getattr(resp, f"GetNode{d}")(node, case, shape, 0))
-                                    for d in DISPLACEMENTS}
-                            rows.append(row(node=str(node), load_case=str(case), shape=shape, **vals))
+                            try:
+                                vals = {d: float(getattr(resp, f"GetNode{d}")(node, case, shape, 0))
+                                        for d in DISPLACEMENTS}
+                                rows.append(row(node=str(node), load_case=str(case), shape=shape, **vals))
+                            except Exception as exc:  # noqa: BLE001 - LIRA raises for data it does not have
+                                rows.append(row("no_result", node=str(node), load_case=str(case), shape=shape,
+                                                message=str(exc)))
             return ResultSet(rows, RESULT_UNITS, "global X-Y-Z (node local axes where assigned)", diagnostics)
+
+        if result_type == "fragment_loads":
+            nodes = ids or [int(i) for i in self.element_ids("node")]
+            for chunk in self._chunks(nodes):
+                resp = self._query(path, "kLiraRequest_FragmLoadForces", "ILiraFragmLoadsRequest", "FragmLoads",
+                                   lambda req, chunk=chunk: req.Nodes.AddFromString(chunk))
+                names = [FRAGMENT_FORCES[c] for c in self._longs(resp.Forces) if c in FRAGMENT_FORCES]
+                shapes = self._case_shapes(resp)
+                for node in parse_numbers(chunk):
+                    for case in cases:
+                        for shape in shapes.get(case, ([1], False))[0]:
+                            try:
+                                vals = {n: float(getattr(resp, f"GetNode{n}")(node, case, shape)) for n in names}
+                                rows.append(row(node=str(node), load_case=str(case), shape=shape, **vals))
+                            except Exception as exc:  # noqa: BLE001
+                                rows.append(row("no_result", node=str(node), load_case=str(case), shape=shape,
+                                                message=str(exc)))
+            diagnostics.append("Loads on fragment are the forces the rest of the structure (or supports) "
+                               "exert on the fragment nodes; a node outside the computed fragment has no "
+                               "meaningful value. Moments RUX..RUZ in tf*m.")
+            return ResultSet(rows, RESULT_UNITS, "global X-Y-Z", diagnostics)
 
         if result_type == "combination_displacements":
             table = int(options.get("table", 1))

@@ -63,13 +63,18 @@ class _Model:
     def Parameter(self, name):
         if name == "M_THICKNESS" and self.TypeModel == 10:
             return 0.25
+        if name == "M_NAME":
+            return f"obj{self.ID}"
         raise RuntimeError("no such parameter")
 
 
 class _Storey:
     ID = 100
     CountModel = 4
-    models = [_Model(10, 1), _Model(12, 2), _Model(12, 3), _Model(77, 4)]
+    models = [_Model(10, 1), _Model(12, 2), _Model(81, 3), _Model(77, 4)]
+
+    def Parameter(self, name):
+        return "Этаж 1" if name == "M_NAME" else 3.3
 
     def GetModelByIndex(self, i):
         return self.models[i]
@@ -81,17 +86,29 @@ class _Storey:
         raise AssertionError("model was modified")
 
 
-class _Doc:
-    CountStorey = 1
+class _Project:
+    ID, CountStorey = 7, 1
 
     def GetStoreyByIndex(self, i):
         return _Storey()
+
+    def Parameter(self, name):
+        return "Здание"
+
+
+class _Doc:
+    CountProjects, fullPath = 1, "C:\\m\\house.spf"
+
+    def GetProjectByIndex(self, i):
+        return _Project()
 
     def GetActiveStorey(self):
         return _Storey()
 
 
 class _App:
+    AppVersion = "2024"
+
     def GetActiveDoc(self):
         return _Doc()
 
@@ -109,9 +126,16 @@ def test_only_getters_can_be_called(sapfir):
 def test_model_structure_over_com(sapfir):
     sapfir.adapter._app = _App()
     out = sapfir.adapter.get_model_structure(include_objects=True, parameters=["M_THICKNESS"])
-    assert out["storey_count"] == 1 and out["totals_by_type"] == {"wall": 1, "column": 2, "type_77": 1}
-    objects = out["storeys"][0]["objects"]
+    assert out["project_count"] == 1
+    assert out["totals_by_type"] == {"wall": 1, "column": 1, "analytical_bar": 1, "type_77": 1}
+    assert out["analytical_objects_in_storeys"] == {"analytical_bar": 1}
+    storey = out["projects"][0]["storeys"][0]
+    assert storey["name"] == "Этаж 1" and storey["M_THICKNESS"] == 3.3
+    objects = storey["objects"]
     assert objects[0]["M_THICKNESS"] == 0.25 and objects[1]["M_THICKNESS"].startswith("unavailable")
-    assert sapfir.adapter.read_property(["GetActiveDoc", "CountStorey"])["value"] == 1
+    assert objects[0]["M_NAME"] == "obj1"
+    assert sapfir.adapter.read_property(["GetActiveDoc", "CountProjects"])["value"] == 1
+    assert sapfir.adapter.model_path() == "C:\\m\\house.spf"
+    assert sapfir.adapter.program_info()["version"] == "2024"
     with pytest.raises(AdapterError, match="not a parameter mnemonic"):
         sapfir.adapter.get_model_structure(parameters=["M_X = 1"])

@@ -50,6 +50,8 @@ class _Output:
     def GetMemberEndForces(self, member, end, lc, flag):
         self.calls.append((member, end, lc, flag))
         return [0.0, 10.0 if end == 0 else -10.0, 0.0, 0.0, 0.0, 30.0 if end == 0 else 0.0]
+    def GetIntermediateMemberForcesAtDistance(self, member, distance, lc):
+        return [0.0, 10.0, 0.0, 0.0, 0.0, 10.0 * (3.0 - distance)]
     def GetNoOfModesExtracted(self): return 1
     def GetModeFrequency(self, m): return 2.0
     def GetModalMassParticipationFactors(self, m): return (80.0, 0.0, 0.0)
@@ -137,3 +139,11 @@ def test_run_analysis_restores_silent_mode(staad):
     assert out["status"] == "completed" and staad.adapter._staad.silent == [True, False]
     with pytest.raises(AdapterError, match="unsupported"):
         staad.adapter.run_analysis(["1"])
+
+
+def test_section_forces_use_distance_from_end_a(staad):
+    res = staad.get_results("member_section_forces", ["2"], ["7"], {"sections": 3}, 0, 10)
+    assert [(r["distance"], r["MZ"]) for r in res["rows"]] == [(0.0, 30.0), (1.5, 15.0), (3.0, 0.0)]
+    assert res["rows"][1]["relative_position"] == 0.5 and "end-B" in res["diagnostics"][0]
+    with pytest.raises(AdapterError, match="options.sections"):
+        staad.get_results("member_section_forces", ["2"], ["7"], {"sections": 1}, 0, 10)

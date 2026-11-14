@@ -5,9 +5,11 @@ Sources for the automation (COM) API: the tutorial (2017 ch. 10, unchanged in
 program's Manual folder) and the LIRALAND forum thread "Программирование в
 Сапфир". From them: ProgID `Sapfir.Application` (version-independent; `.7.0`
 etc. for a specific release), attachable with GetActiveObject;
-`Application.GetActiveDoc()`; project `CountStorey` / `GetStoreyByIndex(i)`;
-storey `CountModel` / `GetModelByIndex(i)`; every object has `TypeModel`, `ID`
-and `Parameter(name)` with mnemonic names (e.g. M_THICKNESS). None of this was
+`Application.GetActiveDoc()` and `AppVersion`; document `fullPath`, `Title`,
+`CountProjects` / `GetProjectByIndex(i)`; building (AutoProject) `CountStorey`
+/ `GetStoreyByIndex(i)`; storey `CountModel` / `GetModelByIndex(i)`; every
+object has `TypeModel`, `ID` and `Parameter(name)` with mnemonic names (e.g.
+M_NAME, M_THICKNESS). None of this was
 run against an installation, so the adapter offers:
 
 * COM route — attach; `get_model_structure` walks storeys and objects with the
@@ -36,10 +38,16 @@ from .ifc import read_ifc
 DOCUMENTED_PROGID = "Sapfir.Application.7.0"
 GENERIC_PROGID = "Sapfir.Application"  # current installed version
 # TM_* constants from const_model.jsh / SpTypeModel.h as quoted in the vendor documentation
-TYPE_MODEL = {4: "storey", 10: "wall", 11: "slab", 12: "column", 13: "beam"}
+TYPE_MODEL = {
+    3: "project", 4: "storey", 5: "block", 6: "fea_project", 10: "wall", 11: "slab", 12: "column", 13: "beam",
+    15: "roof", 16: "stairs", 17: "axes", 18: "line", 19: "zone", 20: "dimension", 21: "load", 30: "hole",
+    31: "window", 32: "door", 62: "prism", 67: "polygon", 68: "text",
+    80: "analytical_schema", 81: "analytical_bar", 82: "analytical_shell", 128: "other",
+}
+ANALYTICAL = ("fea_project", "analytical_schema", "analytical_bar", "analytical_shell")
 MAX_OBJECTS = 5000
 PROGID_PREFIXES = ("sapfir.", "liracad.", "lira-cad.")
-_GETTER = re.compile(r"^((Get|Is|Has|Count)\w*|TypeModel|ID)$")
+_GETTER = re.compile(r"^((Get|Is|Has|Count)\w*|TypeModel|TypeExternalObj|ID|AppVersion|fullPath|Title)$")
 _SCALARS = (str, int, float, bool, type(None))
 
 
@@ -141,10 +149,20 @@ class SapfirAdapter(Adapter):
         return self._app
 
     def program_info(self) -> dict[str, Any]:
-        return {"name": self.title, "progid": self._progid,
-                "version": "not reported by the documented API; see ProgID / server path in capabilities"}
+        try:
+            version = str(self._value(self._a(), "AppVersion"))
+        except Exception as exc:  # noqa: BLE001
+            version = f"AppVersion not readable: {exc}"
+        return {"name": self.title, "progid": self._progid, "version": version}
 
     def model_path(self) -> str | None:
+        if self._app is not None:
+            try:
+                path = self._value(self._app.GetActiveDoc(), "fullPath")
+                if path:
+                    return str(path)
+            except Exception:  # noqa: BLE001 - no document or member missing on this build
+                pass
         return str(self._ifc_path) if self._ifc_path else None
 
     # ---- COM exploration (read-only) --------------------------------------------
@@ -197,52 +215,69 @@ class SapfirAdapter(Adapter):
     def get_model_structure(self, include_objects: bool = False,
                             parameters: list[str] | None = None) -> dict[str, Any]:
         doc = self._walk(["GetActiveDoc"])
-        try:
-            storey_count = int(self._value(doc, "CountStorey"))
-        except Exception as exc:  # noqa: BLE001
-            raise AdapterError(errors.API_ERROR, f"The active document does not answer CountStorey: {exc}.",
-                               "The documented calls may differ on this build; inspect it with "
-                               "sapfir_describe_api path=['GetActiveDoc'].") from None
-        for name in parameters or []:
+        names = ["M_NAME", *(parameters or [])]
+        for name in names:
             if not re.fullmatch(r"[A-Za-z0-9_]+", name):
                 raise AdapterError(errors.INVALID_INPUT, f"'{name}' is not a parameter mnemonic.",
                                    "Mnemonics look like M_THICKNESS; SAPFIR shows them in the properties "
                                    "window when the mnemonics option is on.")
-        storeys: list[dict[str, Any]] = []
+        try:
+            project_count = int(self._value(doc, "CountProjects"))
+        except Exception as exc:  # noqa: BLE001
+            raise AdapterError(errors.API_ERROR, f"The active document does not answer CountProjects: {exc}.",
+                               "The documented calls may differ on this build; inspect it with "
+                               "sapfir_describe_api path=['GetActiveDoc'].") from None
+
+        def param(obj: Any, name: str) -> Any:
+            try:
+                return obj.Parameter(name)
+            except Exception as exc:  # noqa: BLE001 - parameter absent for this object type
+                return f"unavailable: {exc}"
+
+        projects: list[dict[str, Any]] = []
         totals: dict[str, int] = {}
         listed = 0
         diagnostics: list[str] = []
-        for si in range(storey_count):  # the forum example treats GetStoreyByIndex(0) as the first storey
-            storey = doc.GetStoreyByIndex(si)
-            if storey is None:
-                diagnostics.append(f"GetStoreyByIndex({si}) returned nothing.")
-                continue
-            count = int(self._value(storey, "CountModel"))
-            entry: dict[str, Any] = {"index": si, "id": self._value(storey, "ID"), "object_count": count,
-                                     "objects_by_type": {}}
-            if include_objects:
-                entry["objects"] = []
-            for mi in range(count):
-                model = storey.GetModelByIndex(mi)
-                code = int(self._value(model, "TypeModel"))
-                kind = TYPE_MODEL.get(code, f"type_{code}")
-                entry["objects_by_type"][kind] = entry["objects_by_type"].get(kind, 0) + 1
-                totals[kind] = totals.get(kind, 0) + 1
-                if include_objects and listed < MAX_OBJECTS:
-                    item: dict[str, Any] = {"index": mi, "id": self._value(model, "ID"), "type": kind,
-                                            "type_code": code}
-                    for name in parameters or []:
-                        try:
-                            item[name] = model.Parameter(name)
-                        except Exception as exc:  # noqa: BLE001 - parameter absent for this object type
-                            item[name] = f"unavailable: {exc}"
-                    entry["objects"].append(item)
-                    listed += 1
-            storeys.append(entry)
+        for pi in range(project_count):  # indices run [0 .. count-1] per the vendor description
+            project = doc.GetProjectByIndex(pi)
+            storey_count = int(self._value(project, "CountStorey"))
+            storeys: list[dict[str, Any]] = []
+            for si in range(storey_count):
+                storey = project.GetStoreyByIndex(si)
+                if storey is None:
+                    diagnostics.append(f"Project {pi}: GetStoreyByIndex({si}) returned nothing.")
+                    continue
+                count = int(self._value(storey, "CountModel"))
+                entry: dict[str, Any] = {"index": si, "id": self._value(storey, "ID"),
+                                         "name": param(storey, "M_NAME"), "object_count": count,
+                                         "objects_by_type": {}}
+                for name in parameters or []:
+                    entry[name] = param(storey, name)
+                if include_objects:
+                    entry["objects"] = []
+                for mi in range(count):
+                    model = storey.GetModelByIndex(mi)
+                    code = int(self._value(model, "TypeModel"))
+                    kind = TYPE_MODEL.get(code, f"type_{code}")
+                    entry["objects_by_type"][kind] = entry["objects_by_type"].get(kind, 0) + 1
+                    totals[kind] = totals.get(kind, 0) + 1
+                    if include_objects and listed < MAX_OBJECTS:
+                        item: dict[str, Any] = {"index": mi, "id": self._value(model, "ID"), "type": kind,
+                                                "type_code": code}
+                        for name in names:
+                            item[name] = param(model, name)
+                        entry["objects"].append(item)
+                        listed += 1
+                storeys.append(entry)
+            projects.append({"index": pi, "id": self._value(project, "ID"), "name": param(project, "M_NAME"),
+                             "storey_count": storey_count, "storeys": storeys})
         if include_objects and listed >= MAX_OBJECTS:
             diagnostics.append(f"Object listing stopped at {MAX_OBJECTS} objects; counts are complete.")
-        return {"source": "COM (automation objects)", "storey_count": storey_count, "storeys": storeys,
-                "totals_by_type": totals, "type_codes": {v: k for k, v in TYPE_MODEL.items()},
+        analytical = {k: totals[k] for k in ANALYTICAL if k in totals}
+        return {"source": "COM (automation objects)", "project_count": project_count, "projects": projects,
+                "totals_by_type": totals,
+                "analytical_objects_in_storeys": analytical or "none found among storey objects (the analytical "
+                "model may be stored outside storeys; this is not proof that it is absent)",
                 "units": "SAPFIR parameters are in metres unless the mnemonic says otherwise",
                 "diagnostics": diagnostics}
 
@@ -315,8 +350,9 @@ class SapfirAdapter(Adapter):
     def extra_tools(self) -> dict[str, Any]:
         return {
             "get_model_structure": (self.get_model_structure,
-                                    "Storeys of the active SAPFIR document and the objects in each, counted "
-                                    "by type (wall, slab, column, beam; other types as type_<code>), read "
+                                    "Buildings and storeys of the active SAPFIR document with storey names "
+                                    "and the objects in each, counted by type (wall, slab, column, beam, "
+                                    "analytical bar/shell, ...; unknown types as type_<code>), read "
                                     "through COM without changing the model. include_objects=true lists "
                                     "every object (id, type); parameters=['M_THICKNESS', ...] also reads "
                                     "those mnemonic parameters per object.", None),

@@ -56,6 +56,9 @@ class StaadAdapter(Adapter):
         "support_reactions": "FX,FY,FZ,MX,MY,MZ at supported nodes (global axes)",
         "member_end_forces": "FX,FY,FZ,MX,MY,MZ at both member ends; options.axes = 'local' (default) "
                              "or 'global'",
+        "member_section_forces": "FX (axial), FY, FZ (shears), MX (torsion), MY, MZ at equally spaced "
+                                 "sections along members, local axes; options.sections = number of "
+                                 "sections including both ends (default 5, max 50)",
         "modal": "per extracted mode: frequency, period and mass participation in X,Y,Z (percent)",
     }
 
@@ -73,7 +76,8 @@ class StaadAdapter(Adapter):
             info["openstaadpy"] = False
             info["note"] = ("Package 'openstaadpy' is not installed: "
                             "pip install git+https://github.com/BentleySystems/openstaadpy.git")
-        info["options"] = {"member_end_forces": {"axes": ["local", "global"]}}
+        info["options"] = {"member_end_forces": {"axes": ["local", "global"]},
+                           "member_section_forces": {"sections": "2..50"}}
         info["requirements"] = "STAAD.Pro 2025 (25.0.1) or newer, running with a model open."
         return info
 
@@ -286,6 +290,36 @@ class StaadAdapter(Adapter):
                     except Exception as exc:  # noqa: BLE001 - API failure for this item, not a zero
                         rows.append(row("error", node=str(node), load_case=str(case), message=str(exc)))
             return ResultSet(rows, units, "global X-Y-Z", diagnostics)
+
+        if result_type == "member_section_forces":
+            try:
+                sections = int(options.get("sections", 5))
+            except (TypeError, ValueError):
+                sections = 0
+            if not 2 <= sections <= 50:
+                raise AdapterError(errors.INVALID_INPUT, "options.sections must be an integer from 2 to 50.")
+            members = _ints(element_ids, "element_ids") if element_ids else list(s.Geometry.GetBeamList())
+            for member in members:
+                try:
+                    length = float(s.Geometry.GetBeamLength(member))
+                except Exception as exc:  # noqa: BLE001
+                    rows.append(row("error", member=str(member), message=f"GetBeamLength: {exc}"))
+                    continue
+                for case in cases:
+                    for i in range(sections):
+                        distance = length * i / (sections - 1)
+                        try:
+                            vals = list(out.GetIntermediateMemberForcesAtDistance(member, distance, case))
+                            rows.append(row(member=str(member), load_case=str(case), distance=distance,
+                                            relative_position=i / (sections - 1), **dict(zip(SIX, vals))))
+                        except Exception as exc:  # noqa: BLE001
+                            rows.append(row("error", member=str(member), load_case=str(case), distance=distance,
+                                            message=str(exc)))
+            diagnostics.append("Distance is measured from member end A in base length units, as in the "
+                               "openstaadpy reference ('distance from the starting end of the member'). Older "
+                               "OpenSTAAD manuals describe a 0..1 ratio for the COM function: on first use "
+                               "check that the last section reproduces the end-B forces.")
+            return ResultSet(rows, units, "member local x-y-z", diagnostics)
 
         axes = options.get("axes", "local")
         if axes not in ("local", "global"):
