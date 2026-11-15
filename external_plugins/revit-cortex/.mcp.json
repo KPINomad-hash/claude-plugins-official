@@ -1,5 +1,0 @@
-{
-  "revitcortex": {
-    "command": "${USERPROFILE}/.revitcortex/server/RevitCortex.Server.exe"
-  }
-}

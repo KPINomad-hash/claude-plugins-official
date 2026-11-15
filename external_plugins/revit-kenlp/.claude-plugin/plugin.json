@@ -1,8 +1,0 @@
-{
-  "name": "revit-kenlp",
-  "description": "Connects Claude Code to an installed KenLP RevitMCPServer (v0.8.x) for Revit 2025-2027: about 100 tools with dry-run previews, an audit log and tool profiles. Requires Node.js and the KenLP add-in on the same Windows machine.",
-  "author": {
-    "name": "Le Phuc"
-  },
-  "homepage": "https://github.com/KenLP/RevitMCPServer"
-}

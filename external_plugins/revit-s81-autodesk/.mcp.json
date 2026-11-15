@@ -1,5 +1,0 @@
-{
-  "autodesk": {
-    "command": "${LOCALAPPDATA}/AutodeskMcp/server/AutodeskMcp.Server.exe"
-  }
-}

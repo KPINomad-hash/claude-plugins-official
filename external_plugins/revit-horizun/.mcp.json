@@ -1,5 +1,9 @@
 {
   "horizun-revit": {
-    "command": "${LOCALAPPDATA}/Programs/Horizun/MCP/server/horizun-mcp.exe"
+    "command": "${LOCALAPPDATA}/Programs/Horizun/MCP/server/horizun-mcp.exe",
+    "env": {
+      "HORIZUN_PROFILE": "completo",
+      "HORIZUN_SCHEMA_MODE": "compact"
+    }
   }
 }

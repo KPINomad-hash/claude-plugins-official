@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- Revit-independent part of the add-in: pipe server, protocol, settings.
-       Built on its own only for tests; the add-in compiles these sources in,
-       so a single DLL is deployed. -->
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <RollForward>Major</RollForward>
-  </PropertyGroup>
-</Project>

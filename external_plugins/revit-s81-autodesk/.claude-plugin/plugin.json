@@ -1,8 +1,0 @@
-{
-  "name": "revit-s81-autodesk",
-  "description": "Connects Claude Code to an installed s81 Autodesk MCP server (v0.3.x) for Revit and AutoCAD 2022-2027: a small, tested tool set over a per-user named pipe. Requires the s81 add-in install on the same Windows machine.",
-  "author": {
-    "name": "Samer William Khalaf"
-  },
-  "homepage": "https://github.com/s81/Autodesk--mcp"
-}

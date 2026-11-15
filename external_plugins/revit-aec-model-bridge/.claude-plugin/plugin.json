@@ -1,8 +1,0 @@
-{
-  "name": "revit-aec-model-bridge",
-  "description": "Connects Claude Code to an installed AEC Model Bridge (v1.4.x): a Python MCP hub for Revit 2024-2027 plus Rhino, IFC and Speckle, where every write needs a plan approved by a human in Revit. Requires the AEC Model Bridge setup on the same Windows machine.",
-  "author": {
-    "name": "Sam-AEC"
-  },
-  "homepage": "https://github.com/Sam-AEC/aec-model-bridge"
-}
