@@ -3179,6 +3179,15 @@
       ]
     },
     {
+      "name": "revit-workbench",
+      "description": "Setup and migration playbooks for Autodesk Revit over MCP: a one-step installer that puts the Horizun and BIMwright Revit MCP servers on a Windows workstation from an offline kit and registers them in Claude Code and Claude Desktop, plus a step-by-step procedure for rebuilding AutoCAD (DWG) drawings of architecture, concrete, steel and HVAC as a Revit model.",
+      "author": {
+        "name": "KPINomad"
+      },
+      "source": "./plugins/revit-workbench",
+      "category": "design"
+    },
+    {
       "name": "ralph-loop",
       "description": "Interactive self-referential AI loops for iterative development, implementing the Ralph Wiggum technique. Claude works on the same task repeatedly, seeing its previous work, until completion.",
       "author": {
