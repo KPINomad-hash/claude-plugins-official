@@ -1,0 +1,8 @@
+{
+  "revit-pyrevit": {
+    "command": "${REVIT_DEMOLINATOR_PYTHON:-C:/RevitMCP/demolinator-venv/Scripts/python.exe}",
+    "args": [
+      "${REVIT_DEMOLINATOR_MAIN:-C:/RevitMCP/demolinator.extension/main.py}"
+    ]
+  }
+}

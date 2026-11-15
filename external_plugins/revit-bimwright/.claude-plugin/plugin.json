@@ -1,0 +1,8 @@
+{
+  "name": "revit-bimwright",
+  "description": "Connects Claude Code to an installed BIMwright rvt-mcp server (v1.2.x) for Revit 2022-2027. Started with --disable-send-code, so arbitrary C# execution is off. Requires the BIMwright setup on the same Windows machine.",
+  "author": {
+    "name": "BIMwright"
+  },
+  "homepage": "https://github.com/bimwright/rvt-mcp"
+}

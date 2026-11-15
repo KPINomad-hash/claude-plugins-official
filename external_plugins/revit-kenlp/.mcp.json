@@ -1,0 +1,12 @@
+{
+  "revit-kenlp": {
+    "command": "node",
+    "args": [
+      "${LOCALAPPDATA}/RevitMCPServer/dist/index.js"
+    ],
+    "env": {
+      "REVIT_MCP_VERSION": "${REVIT_MCP_VERSION:-2026}",
+      "REVIT_MCP_PROFILE": "${REVIT_MCP_PROFILE:-}"
+    }
+  }
+}

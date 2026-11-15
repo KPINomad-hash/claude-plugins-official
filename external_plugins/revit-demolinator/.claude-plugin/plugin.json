@@ -1,0 +1,8 @@
+{
+  "name": "revit-demolinator",
+  "description": "Connects Claude Code to the Demolinator pyRevit-based Revit MCP server (FastMCP, 48 tools). Requires pyRevit with the Routes server enabled and a local Python environment on the same Windows machine.",
+  "author": {
+    "name": "Demolinator"
+  },
+  "homepage": "https://github.com/Demolinator/revit-mcp-server"
+}

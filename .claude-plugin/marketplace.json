@@ -3153,6 +3153,106 @@
       "homepage": "https://docs.railway.com/ai/claude-code-plugin"
     },
     {
+      "name": "revit-mcp",
+      "description": "Work with the Autodesk Revit model open on this Windows machine: query elements and parameters, read schedules and warnings, see views as images, and (only when the user allows it in Revit) set parameters and create, move or delete elements. Pairs with the Revit MCP add-in for Revit 2025-2027; no network ports, no code execution.",
+      "author": {
+        "name": "KPINomad"
+      },
+      "source": "./plugins/revit-mcp",
+      "category": "design"
+    },
+    {
+      "name": "revit-aec-model-bridge",
+      "description": "Connects Claude Code to an installed AEC Model Bridge (v1.4.x): a Python MCP hub for Revit 2024-2027 plus Rhino, IFC and Speckle, where every write needs a plan approved by a human in Revit. Requires the AEC Model Bridge setup on the same Windows machine.",
+      "author": {
+        "name": "Sam-AEC"
+      },
+      "category": "design",
+      "source": "./external_plugins/revit-aec-model-bridge",
+      "homepage": "https://github.com/Sam-AEC/aec-model-bridge",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
+      "name": "revit-bimwright",
+      "description": "Connects Claude Code to an installed BIMwright rvt-mcp server (v1.2.x) for Revit 2022-2027. Started with --disable-send-code, so arbitrary C# execution is off. Requires the BIMwright setup on the same Windows machine.",
+      "author": {
+        "name": "BIMwright"
+      },
+      "category": "design",
+      "source": "./external_plugins/revit-bimwright",
+      "homepage": "https://github.com/bimwright/rvt-mcp",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
+      "name": "revit-cortex",
+      "description": "Connects Claude Code to an installed RevitCortex server (v1.0.x) for Revit 2023-2027: a large C# tool catalog including rebar, steel, IFC and schedules. Requires the RevitCortex setup on the same Windows machine.",
+      "author": {
+        "name": "Luigi Dattilo"
+      },
+      "category": "design",
+      "source": "./external_plugins/revit-cortex",
+      "homepage": "https://github.com/LuDattilo/RevitCortex",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
+      "name": "revit-demolinator",
+      "description": "Connects Claude Code to the Demolinator pyRevit-based Revit MCP server (FastMCP, 48 tools). Requires pyRevit with the Routes server enabled and a local Python environment on the same Windows machine.",
+      "author": {
+        "name": "Demolinator"
+      },
+      "category": "design",
+      "source": "./external_plugins/revit-demolinator",
+      "homepage": "https://github.com/Demolinator/revit-mcp-server",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
+      "name": "revit-horizun",
+      "description": "Connects Claude Code to an installed Horizun Revit MCP server (v4.x): 125 tools for Revit 2023-2027 behind a small default profile, with rehearse-then-apply writes. Requires the Horizun setup on the same Windows machine.",
+      "author": {
+        "name": "Horizun Group"
+      },
+      "category": "design",
+      "source": "./external_plugins/revit-horizun",
+      "homepage": "https://github.com/HorizunGroup/horizun-revit-mcp",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
+      "name": "revit-kenlp",
+      "description": "Connects Claude Code to an installed KenLP RevitMCPServer (v0.8.x) for Revit 2025-2027: about 100 tools with dry-run previews, an audit log and tool profiles. Requires Node.js and the KenLP add-in on the same Windows machine.",
+      "author": {
+        "name": "Le Phuc"
+      },
+      "category": "design",
+      "source": "./external_plugins/revit-kenlp",
+      "homepage": "https://github.com/KenLP/RevitMCPServer",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
+      "name": "revit-s81-autodesk",
+      "description": "Connects Claude Code to an installed s81 Autodesk MCP server (v0.3.x) for Revit and AutoCAD 2022-2027: a small, tested tool set over a per-user named pipe. Requires the s81 add-in install on the same Windows machine.",
+      "author": {
+        "name": "Samer William Khalaf"
+      },
+      "category": "design",
+      "source": "./external_plugins/revit-s81-autodesk",
+      "homepage": "https://github.com/s81/Autodesk--mcp",
+      "tags": [
+        "community-managed"
+      ]
+    },
+    {
       "name": "ralph-loop",
       "description": "Interactive self-referential AI loops for iterative development, implementing the Ralph Wiggum technique. Claude works on the same task repeatedly, seeing its previous work, until completion.",
       "author": {

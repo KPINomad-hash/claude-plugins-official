@@ -1,0 +1,8 @@
+{
+  "rvt-mcp": {
+    "command": "${LOCALAPPDATA}/Bimwright/rvt-mcp/server/current/rvt-mcp.exe",
+    "args": [
+      "--disable-send-code"
+    ]
+  }
+}

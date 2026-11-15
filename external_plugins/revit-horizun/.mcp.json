@@ -1,0 +1,5 @@
+{
+  "horizun-revit": {
+    "command": "${LOCALAPPDATA}/Programs/Horizun/MCP/server/horizun-mcp.exe"
+  }
+}

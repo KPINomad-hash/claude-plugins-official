@@ -1,0 +1,12 @@
+{
+  "aec-model-bridge": {
+    "command": "C:/ProgramData/AECModelBridge/python/python.exe",
+    "args": [
+      "-m",
+      "revit_mcp_server.mcp_server"
+    ],
+    "env": {
+      "MCP_REVIT_MODE": "bridge"
+    }
+  }
+}

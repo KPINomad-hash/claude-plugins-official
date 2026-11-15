@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Build one DLL per Revit year:  dotnet build -c Release -p:RevitYear=2027
+       Revit 2025/2026 run on .NET 8, Revit 2027 on .NET 10. -->
+  <PropertyGroup>
+    <RevitYear Condition="'$(RevitYear)' == ''">2026</RevitYear>
+    <TargetFramework Condition="'$(RevitYear)' == '2025' Or '$(RevitYear)' == '2026'">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(RevitYear)' == '2027'">net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>RevitMcp.Addin</AssemblyName>
+    <RootNamespace>RevitMcp.Addin</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>..\..\bin\$(Configuration)\$(RevitYear)\</OutputPath>
+    <IntermediateOutputPath>obj\$(Configuration)\$(RevitYear)\</IntermediateOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\RevitMcp.Bridge\*.cs" LinkBase="Bridge" />
+  </ItemGroup>
+
+  <!-- Reference assemblies only (compile-time); Revit provides the real ones. -->
+  <ItemGroup>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitYear).*" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitYear).*" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,8 @@
+{
+  "name": "revit-cortex",
+  "description": "Connects Claude Code to an installed RevitCortex server (v1.0.x) for Revit 2023-2027: a large C# tool catalog including rebar, steel, IFC and schedules. Requires the RevitCortex setup on the same Windows machine.",
+  "author": {
+    "name": "Luigi Dattilo"
+  },
+  "homepage": "https://github.com/LuDattilo/RevitCortex"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "revit-horizun",
+  "description": "Connects Claude Code to an installed Horizun Revit MCP server (v4.x): 125 tools for Revit 2023-2027 behind a small default profile, with rehearse-then-apply writes. Requires the Horizun setup on the same Windows machine.",
+  "author": {
+    "name": "Horizun Group"
+  },
+  "homepage": "https://github.com/HorizunGroup/horizun-revit-mcp"
+}
